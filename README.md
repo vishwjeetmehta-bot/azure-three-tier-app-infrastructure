@@ -1,45 +1,104 @@
-# Axion Server Infra (Terraform, Azure)
+<div align="center">
 
-3-tier Axion app ka infra: React UI → FastAPI → Azure PostgreSQL.
+# 🌐 Production 3-Tier Azure Infrastructure with Modular Terraform
 
-## Kya banta hai
+[![Terraform](https://img.shields.io/badge/Terraform-Modular_IaC-844FBA?style=for-the-badge&logo=terraform&logoColor=white)](https://www.terraform.io/)
+[![Azure](https://img.shields.io/badge/Azure-Three--Tier_Architecture-0078D4?style=for-the-badge&logo=microsoftazure&logoColor=white)](https://azure.microsoft.com/)
+[![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL_Flexible-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](./LICENSE)
 
-| Resource | Naam | Detail |
-|---|---|---|
-| Resource Group | `rg-axion-update` | East US |
-| VNet | `vnet-axion-landingzone` | 10.0.0.0/16 |
-| Subnets | `snet-frontend-01`, `snet-backend-02`, `snet-db-03` | 10.0.1.0/24, 10.0.2.0/24, 10.0.3.0/24 (db abhi khaali) |
-| VM web | `vm-web-01` + `pip-vm-01` | NSG: 22, 80 (Nginx + React build) |
-| VM app | `vm-app-02` + `pip-vm-02` | NSG: 22, 8000 (query service). 8001 ingestion + simulator internal |
-| PostgreSQL | `pgsql-axion-sandbox-vkm-01` / db `vkmaxiondb` | Flexible v16, B1ms, Central India. Firewall: app VM IP (+ laptop) |
+<p align="center">
+  <b>Enterprise-ready 3-tier architecture provisioned with reusable Terraform modules: Presentation Layer (React / Nginx), Application Layer (FastAPI), and Data Layer (Azure Database for PostgreSQL Flexible Server).</b>
+</p>
 
-State: Azure Storage backend (`rg_vk / stgvkmyaml / tfstate / preprod1.terraform.tfstate`).
+</div>
 
-## Structure
+---
+
+## 🏛️ Architecture Blueprint
 
 ```
-environment/dev/   main.tf, provider.tf, variable.tf, terraform.tfvars
-modules/           resource_group, virtual_network, subnets, public_ip,
-                   linux_virtual_machine (NIC + NSG + VM),
-                   postgres_flexible_server (server + db + firewall rules)
+                      ┌─────────────────────────────────────────┐
+                      │             Internet Users              │
+                      └────────────────────┬────────────────────┘
+                                           │ HTTPS (Port 443 / 80)
+                                           ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ Azure Virtual Network (10.0.0.0/16)                                                    │
+│                                                                                        │
+│  ┌─────────────────────────────────┐   HTTP:8000   ┌─────────────────────────────────┐ │
+│  │ Tier 1: Frontend Subnet (10.0.1.0/24)│ ──────────> │ Tier 2: Backend Subnet (10.0.2.0/24)│ │
+│  │  - VM: `vm-web-01` (Nginx + React)│             │  - VM: `vm-app-02` (FastAPI)     │ │
+│  │  - NSG: Allowed 80, 443, 22     │             │  - NSG: Allowed 8000 (Internal)  │ │
+│  └─────────────────────────────────┘             └────────────────┬────────────────┘ │
+│                                                                   │ Port 5432         │
+│                                                                   ▼                   │
+│                                                  ┌─────────────────────────────────┐  │
+│                                                  │ Tier 3: Database Subnet (10.0.3.0/24)│
+│                                                  │  - Azure PostgreSQL Flexible v16│  │
+│                                                  │  - Firewall Restricted to App VM│  │
+│                                                  └─────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-VM ka app port: `terraform.tfvars` → VM ka `app_port` (web = 80, app = 8000).
-DB firewall: `postgresql_servers.pgsql1` → `app_vm_public_ip_name` (app VM) aur `my_laptop_ip` (pgAdmin).
+---
 
-## Run
+## 📦 Provisioned Infrastructure Resources
 
-```powershell
-cd environment/dev
+| Resource Tier | Azure Component | Configuration Details |
+| :--- | :--- | :--- |
+| **Resource Group** | `rg-axion-update` | Primary region: East US |
+| **Networking** | `vnet-axion-landingzone` | Address Space: `10.0.0.0/16` with subnets `/24` |
+| **Presentation Tier** | `vm-web-01` | Ubuntu Linux, Nginx Web Server hosting React frontend |
+| **Application Tier** | `vm-app-02` | Ubuntu Linux, Systemd managed FastAPI query service |
+| **Database Tier** | Azure PostgreSQL Flexible | Engine v16, SKU B1ms, Restricted Firewall Rules |
+| **State Storage** | Azure Blob Storage Backend | Encrypted remote state management (`stgvkmyaml`) |
+
+---
+
+## 📁 Repository Layout
+
+```
+azure-three-tier-app-infrastructure/
+├── environment/
+│   └── dev/                    # Environment composition layer
+│       ├── main.tf             # Module invocations
+│       ├── provider.tf         # AzureRM provider & backend configuration
+│       ├── variable.tf         # Input variable definitions
+│       └── terraform.tfvars    # Environment parameter values
+├── modules/                    # Reusable enterprise modules
+│   ├── azurerm_resource_group/
+│   ├── azurerm_virtual_network/
+│   ├── azurerm_subnets/
+│   ├── azurerm_public_ip/
+│   ├── azurerm_linux_virtual_machine/
+│   └── azurerm_postgres_flexible_server/
+└── README.md
+```
+
+---
+
+## ⚡ Deployment Instructions
+
+```bash
+# 1. Authenticate to Azure
 az login
+
+# 2. Navigate to target environment
+cd environment/dev
+
+# 3. Initialize & Deploy
 terraform init
 terraform validate
-terraform plan
-terraform apply
+terraform plan -out=tfplan
+terraform apply tfplan
 ```
 
-## Infra ke baad
+---
 
-1. pgAdmin → `vkmaxiondb` → official schema (`axion-database-schema`, `timestamp` = TIMESTAMP bina TZ)
-2. vm-app-02: query service :8000, ingestion :8001, simulator → systemd
-3. vm-web-01: axion-ui → `API_BASE` = `http://<pip-vm-02>:8000` → `npm run build` → Nginx
+## 👤 Author
+
+**Vishwjeet Kumar Mehta**  
+Senior DevOps & DevSecOps Consultant | Cloud & Infrastructure Architect  
+- **LinkedIn**: [linkedin.com/in/vishwjeetmehta](https://linkedin.com/in/vishwjeetmehta)  
+- **GitHub**: [@vishwjeetmehta-bot](https://github.com/vishwjeetmehta-bot)
